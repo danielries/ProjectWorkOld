@@ -13,7 +13,7 @@ from sklearn.metrics import roc_auc_score, classification_report, confusion_matr
     average_precision_score, accuracy_score, precision_score,f1_score,recall_score
 from sklearn.neighbors import KNeighborsClassifier
 
-from models.loss import * #NTXentLoss, NTXentLoss_poly
+from loss import * #NTXentLoss, NTXentLoss_poly
 
 def one_hot_encoding(X):
     X = [int(x) for x in X]
@@ -31,12 +31,23 @@ def Trainer(model,  temporal_contr_model, model_optimizer, temp_cont_optimizer, 
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(model_optimizer, 'min')
     """Pretraining"""
     if training_mode == 'pre_train':
+        pretrain_loss = []
+        pretrain_loss_t = []
+        pretrain_loss_f = []
+        pretrain_loss_c = []
+        pretrain_loss_TF = []
+
         print('Pretraining on source dataset')
         for epoch in range(1, config.num_epoch + 1):
             # Train and validate
             """Train. In fine-tuning, this part is also trained???"""
-            train_loss, train_acc, train_auc = model_pretrain(model, temporal_contr_model, model_optimizer, temp_cont_optimizer, criterion,
+            train_loss, ave_loss_t, ave_loss_f, ave_loss_c, ave_l_TF, train_acc, train_auc = model_pretrain(model, temporal_contr_model, model_optimizer, temp_cont_optimizer, criterion,
                                                               train_dl, config, device, training_mode, model_F=model_F, model_F_optimizer=model_F_optimizer)
+            pretrain_loss.append(train_loss)
+            pretrain_loss_t.append(ave_loss_t)
+            pretrain_loss_f.append(ave_loss_f)
+            pretrain_loss_c.append(ave_loss_c)
+            pretrain_loss_TF.append(ave_l_TF)  
 
             if training_mode != 'self_supervised':  # use scheduler in all other modes.
                 scheduler.step(train_loss)
@@ -48,17 +59,31 @@ def Trainer(model,  temporal_contr_model, model_optimizer, temp_cont_optimizer, 
         chkpoint = {'model_state_dict': model.state_dict(),}
         torch.save(chkpoint, os.path.join(experiment_log_dir, "saved_models", f'ckp_last.pt'))
         print('Pretrained model is stored at folder:{}'.format(experiment_log_dir+'saved_models'+'ckp_last.pt'))
+        
+        logger.debug('\nTotal pre-training losses:')
+        logger.debug('loss= %s', pretrain_loss)
+        logger.debug('loss_t= %s', pretrain_loss_t)
+        logger.debug('loss_f= %s', pretrain_loss_f)
+        logger.debug('loss_c= %s', pretrain_loss_c)
+        logger.debug('loss_TF= %s', pretrain_loss_TF)
 
     """Fine-tuning and Test"""
     if training_mode != 'pre_train':  # no need to run the evaluation for self-supervised mode.
         """fine-tune"""
         print('Fine-tune  on Fine-tuning set')
-        performance_list = []
         total_f1 = []
+        finetune_acc = []
+        finetune_loss = []
+        test_performance = []
+        test_loss_list = []
+        test_acc_list = []
+
         for epoch in range(1, config.num_epoch + 1):
             valid_loss, valid_acc, valid_auc, valid_prc, emb_finetune, label_finetune, F1 = model_finetune(model, temporal_contr_model, valid_dl, config, device, training_mode,
                                                    model_optimizer, model_F=model_F, model_F_optimizer=model_F_optimizer,
                                                         classifier=classifier, classifier_optimizer=classifier_optimizer)
+            finetune_acc.append(valid_acc.item())
+            finetune_loss.append(valid_loss.item())
 
             if training_mode != 'pre_train':  # use scheduler in all other modes.
                 scheduler.step(valid_loss)
@@ -86,32 +111,41 @@ def Trainer(model,  temporal_contr_model, model_optimizer, temp_cont_optimizer, 
                                                                 model_F=model_F, model_F_optimizer=model_F_optimizer,
                                                              classifier=classifier, classifier_optimizer=classifier_optimizer)
 
-            performance_list.append(performance)
-        performance_array = np.array(performance_list)
+            test_performance.append(performance)
+            test_loss_list.append(test_loss)
+            test_acc_list.append(test_acc)
+
+        logger.debug("\n################## Best testing performance! #########################")
+        performance_array = np.array(test_performance)
         best_performance = performance_array[np.argmax(performance_array[:,0], axis=0)]
-        print('Best Testing: Acc=%.4f| Precision = %.4f | Recall = %.4f | F1 = %.4f | AUROC= %.4f | PRC=%.4f'
+        logger.debug('Best Testing: Acc=%.4f| Precision = %.4f | Recall = %.4f | F1 = %.4f | AUROC= %.4f | PRC=%.4f'
               % (best_performance[0], best_performance[1], best_performance[2], best_performance[3], best_performance[4], best_performance[5]))
 
+        logger.debug("\n################## Saved fine-tune accuracies and losses #########################")
+        logger.debug("\n Finetune_Accuracies= %s", finetune_acc)
+        logger.debug("\n Finetune_Losses= %s", finetune_loss)
+        logger.debug("\n Test_Accuracies= %s", test_acc_list)
+        logger.debug("\n Test_Losses= %s", test_loss_list)
         # train classifier: KNN
-        neigh = KNeighborsClassifier(n_neighbors=1)
-        neigh.fit(emb_finetune.detach().cpu().numpy(), label_finetune)
-        knn_acc_train = neigh.score(emb_finetune.detach().cpu().numpy(), label_finetune)
-        print('KNN finetune acc:', knn_acc_train)
+        #neigh = KNeighborsClassifier(n_neighbors=1)
+        #neigh.fit(emb_finetune.detach().cpu().numpy(), label_finetune)
+        #knn_acc_train = neigh.score(emb_finetune.detach().cpu().numpy(), label_finetune)
+        #print('KNN finetune acc:', knn_acc_train)
         # test the downstream classifier
-        representation_test = emb_test.detach().cpu().numpy()
-        knn_result = neigh.predict(representation_test)
-        knn_result_score = neigh.predict_proba(representation_test)
-        one_hot_label_test = one_hot_encoding(label_test)
-        print(classification_report(label_test, knn_result, digits=4))
-        print(confusion_matrix(label_test, knn_result))
-        knn_acc = accuracy_score(label_test, knn_result)
-        precision = precision_score(label_test, knn_result, average='macro', )
-        recall = recall_score(label_test, knn_result, average='macro', )
-        F1 = f1_score(label_test, knn_result, average='macro')
-        auc = roc_auc_score(knn_result_score, one_hot_label_test, average="macro", multi_class="ovr")
-        prc = average_precision_score(knn_result_score, one_hot_label_test, average="macro")
-        print("KNN Train Acc:{}. '\n' Test: acc {}, precision {}, Recall {}, F1 {}, AUROC {}, AUPRC {}"
-              "".format(knn_acc_train, knn_acc, precision, recall, F1, auc, prc))
+        #representation_test = emb_test.detach().cpu().numpy()
+        #knn_result = neigh.predict(representation_test)
+        #knn_result_score = neigh.predict_proba(representation_test)
+        #one_hot_label_test = one_hot_encoding(label_test)
+        #print(classification_report(label_test, knn_result, digits=4))
+        #print(confusion_matrix(label_test, knn_result))
+        #knn_acc = accuracy_score(label_test, knn_result)
+        #precision = precision_score(label_test, knn_result, average='macro', )
+        #recall = recall_score(label_test, knn_result, average='macro', )
+        #F1 = f1_score(label_test, knn_result, average='macro')
+        #auc = roc_auc_score(knn_result_score, one_hot_label_test, average="macro", multi_class="ovr")
+        #prc = average_precision_score(knn_result_score, one_hot_label_test, average="macro")
+        #print("KNN Train Acc:{}. '\n' Test: acc {}, precision {}, Recall {}, F1 {}, AUROC {}, AUPRC {}"
+        #      "".format(knn_acc_train, knn_acc, precision, recall, F1, auc, prc))
 
     logger.debug("\n################## Training is Done! #########################")
 
@@ -120,6 +154,10 @@ def Trainer(model,  temporal_contr_model, model_optimizer, temp_cont_optimizer, 
 def model_pretrain(model, temporal_contr_model, model_optimizer, temp_cont_optimizer, criterion, train_loader, config,
                    device, training_mode, model_F=None, model_F_optimizer=None):
     total_loss = []
+    total_loss_t = []
+    total_loss_f = []
+    total_loss_c = [] 
+    total_l_TF = []
     total_acc = []
     total_auc = []
     model.train()
@@ -149,23 +187,32 @@ def model_pretrain(model, temporal_contr_model, model_optimizer, temp_cont_optim
         l_1, l_2, l_3 = nt_xent_criterion(z_t, z_f_aug), nt_xent_criterion(z_t_aug, z_f), nt_xent_criterion(z_t_aug, z_f_aug)
         loss_c = (1+ l_TF -l_1) + (1+ l_TF -l_2) + (1+ l_TF -l_3)
 
-        lam = 0.2
+        lam = 0.5
         loss = lam *(loss_t + loss_f) + (1- lam)*loss_c
 
+        total_loss_t.append(loss_t.item())
+        total_loss_f.append(loss_f.item())  
+        total_l_TF.append(l_TF.item())
+        total_loss_c.append(loss_c.item())
         total_loss.append(loss.item())
         loss.backward()
         model_optimizer.step()
 
     print('preptraining: overall loss:{}, l_t: {}, l_f:{}, l_c:{}'.format(loss,loss_t,loss_f, loss_c))
 
-    total_loss = torch.tensor(total_loss).mean()
     if training_mode == "pre_train":
         total_acc = 0
         total_auc = 0
+        ave_loss = torch.tensor(total_loss).mean()
+        ave_loss_t = torch.tensor(total_loss_t).mean()
+        ave_loss_f = torch.tensor(total_loss_f).mean()
+        ave_l_TF = torch.tensor(total_l_TF).mean()
+        ave_loss_c = torch.tensor(total_loss_c).mean()
     else:
         total_acc = torch.tensor(total_acc).mean()
         total_auc = torch.tensor(total_auc).mean()
-    return total_loss, total_acc, total_auc
+        
+    return ave_loss.item(), ave_loss_t.item(), ave_loss_f.item(), ave_loss_c.item(), ave_l_TF.item(), total_acc, total_auc
 
 
 def model_finetune(model, temporal_contr_model, val_dl, config, device, training_mode, model_optimizer, model_F=None, model_F_optimizer=None,
