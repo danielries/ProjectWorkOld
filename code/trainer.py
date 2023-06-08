@@ -66,22 +66,22 @@ def Trainer(model,  temporal_contr_model, model_optimizer, temp_cont_optimizer, 
                          f'finetune Loss  : {valid_loss:.4f}\t | \tfinetune Accuracy : {valid_acc:2.4f}\t | '
                          f'\tfinetune AUC : {valid_auc:2.4f} \t |finetune PRC: {valid_prc:0.4f} ')
 
-            # # save best fine-tuning model""
-            # global arch
-            # arch = 'sleepedf2eplipsy'
-            # if len(total_f1) == 0 or F1 > max(total_f1):
-            #     print('update fine-tuned model')
-            #     os.makedirs('experiments_logs/finetunemodel/', exist_ok=True)
-            #     torch.save(model.state_dict(), 'experiments_logs/finetunemodel/' + arch + '_model.pt')
-            #     torch.save(classifier.state_dict(), 'experiments_logs/finetunemodel/' + arch + '_classifier.pt')
-            # total_f1.append(F1)
+            # save best fine-tuning model""
+            global arch
+            arch = 'sleepedf2eplipsy'
+            if len(total_f1) == 0 or F1 > max(total_f1):
+                print('update fine-tuned model')
+                os.makedirs('experiments_logs/finetunemodel/', exist_ok=True)
+                torch.save(model.state_dict(), 'experiments_logs/finetunemodel/' + arch + '_model.pt')
+                torch.save(classifier.state_dict(), 'experiments_logs/finetunemodel/' + arch + '_classifier.pt')
+            total_f1.append(F1)
 
 
             # evaluate on the test set
             """Testing set"""
             logger.debug('\nTest on Target datasts test set')
-            # model.load_state_dict(torch.load('experiments_logs/finetunemodel/' + arch + '_model.pt'))
-            # classifier.load_state_dict(torch.load('experiments_logs/finetunemodel/' + arch + '_classifier.pt'))
+            model.load_state_dict(torch.load('experiments_logs/finetunemodel/' + arch + '_model.pt'))
+            classifier.load_state_dict(torch.load('experiments_logs/finetunemodel/' + arch + '_classifier.pt'))
             test_loss, test_acc, test_auc, test_prc, emb_test, label_test, performance = model_test(model, temporal_contr_model, test_dl, config, device, training_mode,
                                                                 model_F=model_F, model_F_optimizer=model_F_optimizer,
                                                              classifier=classifier, classifier_optimizer=classifier_optimizer)
