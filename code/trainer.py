@@ -261,7 +261,7 @@ def model_finetune(model, temporal_contr_model, val_dl, config, device, training
         fea_concat_flat = fea_concat.reshape(fea_concat.shape[0], -1)
         loss_p = criterion(predictions, labels) # predictor loss, actually, here is training loss
 
-        lam = 0.2
+        lam = 0.5
         loss =  loss_p + (1-lam)*loss_c + lam*(loss_t + loss_f )
 
         acc_bs = labels.eq(predictions.detach().argmax(dim=1)).float().mean()
@@ -387,4 +387,4 @@ def model_test(model, temporal_contr_model, test_dl,config,  device, training_mo
           % (acc*100, precision * 100, recall * 100, F1 * 100, total_auc*100, total_prc*100))
 
     emb_test_all = torch.concat(tuple(emb_test_all))
-    return total_loss, total_acc, total_auc, total_prc, emb_test_all, trgs, performance
+    return total_loss.item(), total_acc.item(), total_auc, total_prc, emb_test_all, trgs, performance

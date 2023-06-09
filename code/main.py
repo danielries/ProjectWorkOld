@@ -5,7 +5,7 @@ import numpy as np
 from datetime import datetime
 import argparse
 from utils import _logger, set_requires_grad
-from models.TC import TC
+#from models.TC import TC
 from utils import _calc_metrics, copy_Files
 from model import * # base_Model, base_Model_F, target_classifier
 
@@ -27,7 +27,7 @@ parser.add_argument('--run_description', default='run1', type=str,
 parser.add_argument('--seed', default=0, type=int, help='seed value')
 
 # 1. self_supervised; 2. finetune (itself contains finetune and test)
-parser.add_argument('--training_mode', default='fine_tune_test', type=str,
+parser.add_argument('--training_mode', default='pre_train', type=str,
                     help='pre_train, fine_tune_test')
 
 parser.add_argument('--pretrain_dataset', default='SleepEEG', type=str,
@@ -37,19 +37,22 @@ parser.add_argument('--target_dataset', default='Epilepsy', type=str,
 
 parser.add_argument('--logs_save_dir', default='experiments_logs', type=str,
                     help='saving directory')
-parser.add_argument('--device', default='cuda', type=str,
+parser.add_argument('--device', default='cpu', type=str,
                     help='cpu or cuda')
 parser.add_argument('--home_path', default=home_dir, type=str,
                     help='Project home directory')
+parser.add_argument('--subset', default="True", type=str,
+                    help='True or False')
 # args = parser.parse_args()
 args, unknown = parser.parse_known_args()
 
 
 device = torch.device(args.device)
 # experiment_description = args.experiment_description
-sourcedata = args.source_dataset
+sourcedata = args.pretrain_dataset
 targetdata = args.target_dataset
 experiment_description = str(sourcedata)+'_2_'+str(targetdata)
+subset = args.subset == "True"
 
 
 method = 'Time-Freq Consistency' # 'TS-TCC'
@@ -85,17 +88,17 @@ log_file_name = os.path.join(experiment_log_dir, f"logs_{datetime.now().strftime
 # 'experiments_logs/Exp1/run1/train_linear_seed_0/logs_14_04_2022_15_13_12.log'
 logger = _logger(log_file_name)
 logger.debug("=" * 45)
-logger.debug(f'Pre-training Dataset: {sourcedata}')
+logger.debug(f'Pre-training Dataset: {sourcedata}, subset: {subset}')
 logger.debug(f'Target (fine-tuning) Dataset: {targetdata}')
 logger.debug(f'Method:  {method}')
 logger.debug(f'Mode:    {training_mode}')
 logger.debug("=" * 45)
 
 # Load datasets
-sourcedata_path = f"./data/{sourcedata}"  # './data/Epilepsy'
-targetdata_path = f"./data/{targetdata}"
+sourcedata_path = f"./datasets/{sourcedata}"  # './data/Epilepsy'
+targetdata_path = f"./datasets/{targetdata}"
 # for self-supervised, the data are augmented here. Only self-supervised learning need augmentation
-subset = True # if subset= true, use a subset for debugging.
+#subset = True # if subset= true, use a subset for debugging.
 train_dl, valid_dl, test_dl = data_generator(sourcedata_path, targetdata_path, configs, training_mode, subset = subset)
 logger.debug("Data loaded ...")
 

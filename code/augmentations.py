@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import random
 
 def one_hot_encoding(X):
     X = [int(x) for x in X]
@@ -32,11 +33,11 @@ def DataTransform_TD(sample, config):
     aug_2 = scaling(sample, config.augmentation.jitter_scale_ratio)
     aug_3 = permutation(sample, max_segments=config.augmentation.max_seg)
 
-    li = np.random.randint(0, 4, size=[sample.shape[0]]) # there are two augmentations in Frequency domain
-    li_onehot = one_hot_encoding(li)
-    aug_1[1-li_onehot[:, 0]] = 0 # the rows are not selected are set as zero.
-    aug_2[1 - li_onehot[:, 1]] = 0
-    aug_3[1 - li_onehot[:, 2]] = 0
+    li = np.random.randint(0, 3, size=[sample.shape[0]]) # there are two augmentations in Frequency domain
+    li_onehot = one_hot_encoding(li) == 1
+    aug_1[~li_onehot[:, 0]] = 0 # the rows are not selected are set as zero.
+    aug_2[~li_onehot[:, 1]] = 0
+    aug_3[~li_onehot[:, 2]] = 0
     # aug_4[1 - li_onehot[:, 3]] = 0
     aug_T = aug_1 + aug_2 + aug_3 #+aug_4
     return aug_T
@@ -48,9 +49,9 @@ def DataTransform_FD(sample, config):
     aug_2 = add_frequency(sample, 0.1)
     # generate random sequence
     li = np.random.randint(0, 2, size=[sample.shape[0]]) # there are two augmentations in Frequency domain
-    li_onehot = one_hot_encoding(li)
-    aug_1[1-li_onehot[:, 0]] = 0 # the rows are not selected are set as zero.
-    aug_2[1 - li_onehot[:, 1]] = 0
+    li_onehot = one_hot_encoding(li) == 1
+    aug_1[~li_onehot[:, 0]] = 0 # the rows are not selected are set as zero.
+    aug_2[~li_onehot[:, 1]] = 0
     aug_F = aug_1 + aug_2
     return aug_F
 
@@ -108,22 +109,23 @@ def permutation(x, max_segments=5, seg_mode="random"):
                 splits = np.split(orig_steps, split_points)
             else:
                 splits = np.array_split(orig_steps, num_segs[i])
-            warp = np.concatenate(np.random.permutation(splits)).ravel()
+            random.shuffle(splits)
+            warp = np.concatenate(splits).ravel()
             ret[i] = pat[0,warp]
         else:
             ret[i] = pat
     return torch.from_numpy(ret)
 
 def remove_frequency(x, maskout_ratio=0):
-    mask = torch.cuda.FloatTensor(x.shape).uniform_() > maskout_ratio # maskout_ratio are False
+    mask = torch.FloatTensor(x.shape).uniform_() > maskout_ratio # maskout_ratio are False
     mask = mask.to(x.device)
     return x*mask
 
 def add_frequency(x, pertub_ratio=0,):
 
-    mask = torch.cuda.FloatTensor(x.shape).uniform_() > (1-pertub_ratio) # only pertub_ratio of all values are True
+    mask = torch.FloatTensor(x.shape).uniform_() > (1-pertub_ratio) # only pertub_ratio of all values are True
     mask = mask.to(x.device)
     max_amplitude = x.max()
-    random_am = torch.rand(mask.shape)*(max_amplitude*0.1)
+    random_am = torch.rand(mask.shape)*(max_amplitude*0.5)
     pertub_matrix = mask*random_am
     return x+pertub_matrix
