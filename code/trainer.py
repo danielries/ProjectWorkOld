@@ -63,8 +63,8 @@ def Trainer(model,  temporal_contr_model, model_optimizer, temp_cont_optimizer, 
             valid_loss, valid_acc, valid_auc, valid_prc, precision, recall, emb_finetune, label_finetune, F1 = model_finetune(model, temporal_contr_model, valid_dl, config, device, training_mode,
                                                    model_optimizer, model_F=model_F, model_F_optimizer=model_F_optimizer,
                                                         classifier=classifier, classifier_optimizer=classifier_optimizer)
-            finetune_loss.append(valid_loss)
-            finetune_acc.append(valid_acc)
+            finetune_loss.append(valid_loss.item())
+            finetune_acc.append(valid_acc.item())
 
             if training_mode != 'pre_train':  # use scheduler in all other modes.
                 scheduler.step(valid_loss)
@@ -94,8 +94,8 @@ def Trainer(model,  temporal_contr_model, model_optimizer, temp_cont_optimizer, 
                                                                 model_F=model_F, model_F_optimizer=model_F_optimizer,
                                                              classifier=classifier, classifier_optimizer=classifier_optimizer)
 
-            test_acc_list.append(test_acc)
-            test_loss_list.append(test_loss)
+            test_acc_list.append(test_acc.item())
+            test_loss_list.append(test_loss.item())
             performance_list.append(performance)
         performance_array = np.array(performance_list)
         best_performance = performance_array[np.argmax(performance_array[:,0], axis=0)]
